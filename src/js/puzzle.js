@@ -35,27 +35,53 @@ function processUploadedImage(img) {
     splitImage(canvas);
 }
 
-// Split image into tiles
+// Update the splitImage function to add numbers to each tile
 function splitImage(canvas) {
     tileImages = []; // Clear previous tiles
     const context = canvas.getContext('2d');
     
     for (let i = 0; i < gridSize; i++) {
         for (let j = 0; j < gridSize; j++) {
+            const tileIndex = i * gridSize + j;
+            
+            // Skip the last tile (bottom-right) as it will be empty
+            if (tileIndex === gridSize * gridSize - 1) continue;
+            
             const x = j * tileSize;
             const y = i * tileSize;
+            
+            // Create a separate canvas for each tile
             const tileCanvas = document.createElement('canvas');
             tileCanvas.width = tileSize;
             tileCanvas.height = tileSize;
             const tileContext = tileCanvas.getContext('2d');
+            
+            // Draw the portion of the image for this tile
             tileContext.drawImage(canvas, x, y, tileSize, tileSize, 0, 0, tileSize, tileSize);
+            
+            // Add the number on the tile
+            const tileNumber = tileIndex + 1; // Numbers 1-15
+            
+            // Add a semi-transparent background for the number to ensure visibility
+            tileContext.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            tileContext.fillRect(5, 5, 30, 30);
+            
+            // Add the number
+            tileContext.font = 'bold 20px Arial';
+            tileContext.fillStyle = 'black';
+            tileContext.textAlign = 'center';
+            tileContext.textBaseline = 'middle';
+            tileContext.fillText(tileNumber.toString(), 20, 20);
+            
+            // Store the tile image
             tileImages.push(tileCanvas.toDataURL());
         }
     }
+    
     resetGame();
 }
 
-// Reset game
+// Update the resetGame function to handle the numbered tiles
 function resetGame() {
     const canvas = document.getElementById('puzzleCanvas');
     const context = canvas.getContext('2d');
@@ -81,16 +107,72 @@ function resetGame() {
         const pos = positions[idx];
         const [i, j] = pos;
         const key = `${i},${j}`;
-        tiles[key] = idx;
+        
+        // The tileIdx is the index in tileImages
+        const tileIdx = idx;
+        tiles[key] = tileIdx;
         
         const img = new Image();
-        img.src = tileImages[idx];
+        img.src = tileImages[tileIdx];
         img.onload = () => {
             context.drawImage(img, j * tileSize, i * tileSize);
         };
     }
 }
 
+// Update the resetToSolvedState function for the solver
+function resetToSolvedState() {
+    // Clear the canvas
+    const canvas = document.getElementById('puzzleCanvas');
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Create a solved state
+    const solvedTiles = {};
+    let count = 0;
+    
+    // Animate placing each tile in the correct position
+    function placeNextTile() {
+        if (count >= gridSize * gridSize - 1) {
+            // All tiles placed
+            isSolving = false;
+            const solveButton = document.getElementById('solve-puzzle');
+            solveButton.textContent = "Solve Puzzle";
+            solveButton.disabled = false;
+            
+            // Update the game state
+            tiles = solvedTiles;
+            emptyPos = [gridSize-1, gridSize-1]; // Bottom right is empty
+            return;
+        }
+        
+        const row = Math.floor(count / gridSize);
+        const col = count % gridSize;
+        const img = new Image();
+        img.src = tileImages[count];
+        
+        img.onload = () => {
+            // Draw this tile in its correct position
+            context.drawImage(img, col * tileSize, row * tileSize);
+            
+            // Store in solved state
+            solvedTiles[`${row},${col}`] = count;
+            
+            // Move to next tile
+            count++;
+            setTimeout(placeNextTile, 100);
+        };
+        
+        img.onerror = () => {
+            // Skip this tile if image fails to load
+            count++;
+            setTimeout(placeNextTile, 100);
+        };
+    }
+    
+    // Start the animation
+    placeNextTile();
+}
 // Shuffle array
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
@@ -385,59 +467,6 @@ function solvePuzzle() {
     resetToSolvedState();
 }
 
-// Reset to solved state with animation
-function resetToSolvedState() {
-    // Clear the canvas
-    const canvas = document.getElementById('puzzleCanvas');
-    const context = canvas.getContext('2d');
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Create a solved state
-    const solvedTiles = {};
-    let count = 0;
-    
-    // Animate placing each tile in the correct position
-    function placeNextTile() {
-        if (count >= gridSize * gridSize - 1) {
-            // All tiles placed
-            isSolving = false;
-            const solveButton = document.getElementById('solve-puzzle');
-            solveButton.textContent = "Solve Puzzle";
-            solveButton.disabled = false;
-            
-            // Update the game state
-            tiles = solvedTiles;
-            emptyPos = [gridSize-1, gridSize-1]; // Bottom right is empty
-            return;
-        }
-        
-        const row = Math.floor(count / gridSize);
-        const col = count % gridSize;
-        const img = new Image();
-        img.src = tileImages[count];
-        
-        img.onload = () => {
-            // Draw this tile in its correct position
-            context.drawImage(img, col * tileSize, row * tileSize);
-            
-            // Store in solved state
-            solvedTiles[`${row},${col}`] = count;
-            
-            // Move to next tile
-            count++;
-            setTimeout(placeNextTile, 100);
-        };
-        
-        img.onerror = () => {
-            // Skip this tile if image fails to load
-            count++;
-            setTimeout(placeNextTile, 100);
-        };
-    }
-    
-    // Start the animation
-    placeNextTile();
-}
 
 // For a more complex implementation, you could add a real solver using A* search
 // But this simplified version just resets to the original state with animation
