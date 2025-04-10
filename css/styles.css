@@ -68,3 +68,16 @@ button:hover {
 .option-container label {
     cursor: pointer;
 }
+
+#move-counter {
+    margin-left: 20px;
+    font-weight: bold;
+    color: #333;
+}
+
+.option-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 10px;
+}

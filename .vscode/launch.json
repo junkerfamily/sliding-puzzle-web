@@ -8,7 +8,7 @@
             "type": "chrome",
             "request": "launch",
             "name": "Open index.html",
-            "file": "c:\\DanProject\\Slider\\sliding-puzzle-web\\src\\index.html"
+            "file": "c:\\DanProject\\Slider\\sliding-puzzle-web\\index.html"
         }
     ]
 }

@@ -7,6 +7,7 @@ let emptyPos = [3, 3]; // Initial empty position (bottom-right)
 let tileImages = [];
 let showNumbers = true;
 let originalImage = null; // Store the original image for regenerating tiles
+let moveCount = 0; // Track number of moves made
 
 // Wait for the DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -62,6 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
+    // Initialize move counter
+    updateMoveCounter();
+    
     // Initialize with a blank state
     initializeBlankState();
 });
@@ -80,6 +84,10 @@ function initializeBlankState() {
 
 // Process uploaded image
 function processUploadedImage(img) {
+    // Reset move counter
+    moveCount = 0;
+    updateMoveCounter();
+    
     const canvas = document.getElementById('puzzleCanvas');
     const context = canvas.getContext('2d');
     
@@ -104,6 +112,7 @@ function processUploadedImage(img) {
     createTilesFromCanvas(canvas);
 }
 
+// Regenerate tiles with current number preference
 function regenerateTilesWithNumberPreference() {
     // Redraw the original image and create new tiles
     if (!originalImage) return;
@@ -253,8 +262,12 @@ function createTilesFromCanvas(canvas) {
     resetGame();
 }
 
-
+// Reset game
 function resetGame() {
+    // Reset move counter
+    moveCount = 0;
+    updateMoveCounter();
+    
     const canvas = document.getElementById('puzzleCanvas');
     const context = canvas.getContext('2d');
     context.clearRect(0, 0, canvas.width, canvas.height);
@@ -273,13 +286,17 @@ function resetGame() {
     
     // The last position will be the empty tile
     emptyPos = positions[positions.length - 1];
-    console.log("Empty position set to:", emptyPos);
     
-    // Draw all tiles except the last one (the empty position)
+    // Draw all tiles except the empty one
     for (let idx = 0; idx < positions.length - 1; idx++) {
         const pos = positions[idx];
         const [i, j] = pos;
         const key = `${i},${j}`;
+        
+        // Ensure we're not drawing at the empty position
+        if (i === emptyPos[0] && j === emptyPos[1]) {
+            continue;
+        }
         
         // Store tile position and draw it
         tiles[key] = idx;
@@ -292,6 +309,10 @@ function resetGame() {
     }
 }
 
+// Update move counter display
+function updateMoveCounter() {
+    document.getElementById('move-counter').textContent = `Moves: ${moveCount}`;
+}
 
 // Shuffle array
 function shuffleArray(array) {
@@ -348,11 +369,19 @@ function moveTile(clickedPos) {
         
         // Update empty position
         emptyPos = [parseInt(clickedPos.split(',')[0]), parseInt(clickedPos.split(',')[1])];
+        
+        // Increment move counter and update display
+        moveCount++;
+        updateMoveCounter();
     };
 }
 
 // Function to solve the puzzle
 function solvePuzzle() {
+    // Reset move counter
+    moveCount = 0;
+    updateMoveCounter();
+    
     if (!originalImage) {
         alert("Please load an image first!");
         return;
