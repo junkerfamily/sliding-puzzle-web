@@ -1,0 +1,15 @@
+{
+  "name": "sliding-puzzle-web",
+  "version": "1.0.0",
+  "description": "A single-page web application for a sliding puzzle game.",
+  "main": "src/js/app.js",
+  "scripts": {
+    "start": "live-server src"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "live-server": "^1.2.1"
+  },
+  "author": "",
+  "license": "ISC"
+}

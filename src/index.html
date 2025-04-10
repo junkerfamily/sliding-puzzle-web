@@ -1,0 +1,26 @@
+.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sliding Puzzle Game</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <h1>4x4 Sliding Puzzle</h1>
+        <div id="puzzle-board">
+            <canvas id="puzzleCanvas"></canvas>
+        </div>
+        <div class="button-container">
+            <button id="load-image">Load Image</button>
+            <input type="file" id="image-upload" accept="image/*" style="display: none;">
+            <button id="reset-game">Reset</button>
+            <button id="solve-puzzle">Solve Puzzle</button>
+        </div>
+    </div>
+    <script src="js/puzzle.js" defer></script>
+    <script src="js/app.js" defer></script>
+</body>
+</html>
