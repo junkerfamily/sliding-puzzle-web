@@ -8,6 +8,8 @@ let tileImages = [];
 let showNumbers = true;
 let originalImage = null; // Store the original image for regenerating tiles
 let moveCount = 0; // Track number of moves made
+let useTwoEmptyTiles = false;
+
 
 // Wait for the DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -60,6 +62,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             };
             reader.readAsDataURL(file);
+        }
+    });
+    
+    // Set up checkbox for two empty tiles
+    const twoEmptyTilesCheckbox = document.getElementById('two-empty-tiles');
+    useTwoEmptyTiles = twoEmptyTilesCheckbox.checked; // Initialize with default value
+    
+    twoEmptyTilesCheckbox.addEventListener('change', function() {
+        useTwoEmptyTiles = this.checked;
+        console.log("Two empty tiles changed to:", useTwoEmptyTiles);
+        
+        // Reset the game to apply the new setting
+        if (originalImage) {
+            resetGame();
         }
     });
     
@@ -263,6 +279,7 @@ function createTilesFromCanvas(canvas) {
 }
 
 // Reset game
+// Update the resetGame function to handle two empty tiles
 function resetGame() {
     // Reset move counter
     moveCount = 0;
@@ -284,19 +301,18 @@ function resetGame() {
     }
     shuffleArray(positions);
     
-    // The last position will be the empty tile
-    emptyPos = positions[positions.length - 1];
+    // Set number of empty tiles based on checkbox
+    const emptyTileCount = useTwoEmptyTiles ? 2 : 1;
     
-    // Draw all tiles except the empty one
-    for (let idx = 0; idx < positions.length - 1; idx++) {
+    // Store empty positions
+    emptyPos = positions[positions.length - 1]; // First empty position
+    let secondEmptyPos = useTwoEmptyTiles ? positions[positions.length - 2] : null; // Second empty position (if needed)
+    
+    // Draw all tiles except the empty ones
+    for (let idx = 0; idx < positions.length - emptyTileCount; idx++) {
         const pos = positions[idx];
         const [i, j] = pos;
         const key = `${i},${j}`;
-        
-        // Ensure we're not drawing at the empty position
-        if (i === emptyPos[0] && j === emptyPos[1]) {
-            continue;
-        }
         
         // Store tile position and draw it
         tiles[key] = idx;
@@ -307,7 +323,14 @@ function resetGame() {
             context.drawImage(img, j * tileSize, i * tileSize);
         };
     }
+    
+    // If using two empty tiles, store the second one
+    if (useTwoEmptyTiles && secondEmptyPos) {
+        // Add a property to track the second empty position
+        tiles.secondEmptyPos = secondEmptyPos;
+    }
 }
+
 
 // Update move counter display
 function updateMoveCounter() {
@@ -323,6 +346,7 @@ function shuffleArray(array) {
 }
 
 // Handle tile click
+// Update handleTileClick to support two empty tiles
 function handleTileClick(event) {
     const canvas = document.getElementById('puzzleCanvas');
     const rect = canvas.getBoundingClientRect();
@@ -330,20 +354,33 @@ function handleTileClick(event) {
     const y = Math.floor((event.clientY - rect.top) / tileSize);
     const clickedPos = `${y},${x}`;
     
-    if (tiles[clickedPos] !== undefined && isAdjacent(clickedPos)) {
-        moveTile(clickedPos);
+    // Check if adjacent to either empty position
+    if (tiles[clickedPos] !== undefined && 
+        (isAdjacent(clickedPos, emptyPos) || 
+         (useTwoEmptyTiles && tiles.secondEmptyPos && isAdjacent(clickedPos, tiles.secondEmptyPos)))) {
+        
+        // Determine which empty position we're moving to
+        let targetEmptyPos = emptyPos;
+        if (useTwoEmptyTiles && tiles.secondEmptyPos && isAdjacent(clickedPos, tiles.secondEmptyPos)) {
+            targetEmptyPos = tiles.secondEmptyPos;
+        }
+        
+        moveTile(clickedPos, targetEmptyPos);
     }
 }
 
+
+
 // Check if position is adjacent to empty space
-function isAdjacent(clickedPos) {
+// Update isAdjacent to accept a specific empty position
+function isAdjacent(clickedPos, emptyPosition) {
     const [y1, x1] = clickedPos.split(",").map(Number);
-    const [y2, x2] = emptyPos;
+    const [y2, x2] = emptyPosition;
     return (Math.abs(y1 - y2) === 1 && x1 === x2) || (Math.abs(x1 - x2) === 1 && y1 === y2);
 }
 
-// Move tile to empty position
-function moveTile(clickedPos) {
+// Update moveTile to accept a specific target empty position
+function moveTile(clickedPos, targetEmptyPos) {
     const tileIdx = tiles[clickedPos];
     delete tiles[clickedPos];
     const canvas = document.getElementById('puzzleCanvas');
@@ -354,10 +391,10 @@ function moveTile(clickedPos) {
     img.src = tileImages[tileIdx];
     img.onload = () => {
         // Draw the tile in its new position
-        context.drawImage(img, emptyPos[1] * tileSize, emptyPos[0] * tileSize);
+        context.drawImage(img, targetEmptyPos[1] * tileSize, targetEmptyPos[0] * tileSize);
         
         // Update tiles object
-        tiles[`${emptyPos[0]},${emptyPos[1]}`] = tileIdx;
+        tiles[`${targetEmptyPos[0]},${targetEmptyPos[1]}`] = tileIdx;
         
         // Clear the previous position (now the new empty spot)
         context.clearRect(
@@ -367,8 +404,14 @@ function moveTile(clickedPos) {
             tileSize
         );
         
-        // Update empty position
-        emptyPos = [parseInt(clickedPos.split(',')[0]), parseInt(clickedPos.split(',')[1])];
+        // If we moved to the second empty position, update it
+        if (useTwoEmptyTiles && tiles.secondEmptyPos && 
+            targetEmptyPos[0] === tiles.secondEmptyPos[0] && targetEmptyPos[1] === tiles.secondEmptyPos[1]) {
+            tiles.secondEmptyPos = [parseInt(clickedPos.split(',')[0]), parseInt(clickedPos.split(',')[1])];
+        } else {
+            // Otherwise update the main empty position
+            emptyPos = [parseInt(clickedPos.split(',')[0]), parseInt(clickedPos.split(',')[1])];
+        }
         
         // Increment move counter and update display
         moveCount++;
@@ -400,27 +443,40 @@ function resetToSolvedState() {
     // Create a solved state
     const solvedTiles = {};
     
+    // Determine how many tiles to skip (empty positions)
+    const emptyTileCount = useTwoEmptyTiles ? 2 : 1;
+    
     // Place tiles in order
+    let tileIdx = 0;
     for (let i = 0; i < gridSize; i++) {
         for (let j = 0; j < gridSize; j++) {
-            const index = i * gridSize + j;
-            
-            // Skip the last position (will be empty)
-            if (index === gridSize * gridSize - 1) continue;
+            // Skip if we've placed enough tiles
+            if (tileIdx >= gridSize * gridSize - emptyTileCount) {
+                continue;
+            }
             
             const key = `${i},${j}`;
-            solvedTiles[key] = index;
+            solvedTiles[key] = tileIdx;
             
             // Draw the tile
             const img = new Image();
-            img.src = tileImages[index];
+            img.src = tileImages[tileIdx];
             img.onload = () => {
                 context.drawImage(img, j * tileSize, i * tileSize);
             };
+            
+            tileIdx++;
         }
     }
     
     // Update game state
     tiles = solvedTiles;
-    emptyPos = [gridSize-1, gridSize-1]; // Bottom right is empty
+    
+    // Set empty positions - bottom right corner(s)
+    if (useTwoEmptyTiles) {
+        emptyPos = [gridSize-1, gridSize-1]; // Bottom right
+        tiles.secondEmptyPos = [gridSize-1, gridSize-2]; // Next to bottom right
+    } else {
+        emptyPos = [gridSize-1, gridSize-1]; // Just bottom right
+    }
 }

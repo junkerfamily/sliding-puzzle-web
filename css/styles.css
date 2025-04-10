@@ -75,9 +75,16 @@ button:hover {
     color: #333;
 }
 
+
 .option-container {
     display: flex;
     align-items: center;
     justify-content: center;
     margin-top: 10px;
+    gap: 15px; /* Adds spacing between elements */
 }
+
+.option-container input[type="checkbox"] {
+    margin-right: 5px;
+}
+
