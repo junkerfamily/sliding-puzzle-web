@@ -52,3 +52,19 @@ button:hover {
     background-color: #007bff;
     color: white;
 }
+
+
+.option-container {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.option-container input[type="checkbox"] {
+    margin-right: 5px;
+}
+
+.option-container label {
+    cursor: pointer;
+}

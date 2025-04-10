@@ -1,4 +1,4 @@
-.html
+sliding-puzzle-web\src\index.html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18,9 +18,12 @@
             <input type="file" id="image-upload" accept="image/*" style="display: none;">
             <button id="reset-game">Reset</button>
             <button id="solve-puzzle">Solve Puzzle</button>
+            <div class="option-container">
+                <input type="checkbox" id="show-numbers" checked>
+                <label for="show-numbers">Show Numbers</label>
+            </div>
         </div>
     </div>
     <script src="js/puzzle.js" defer></script>
-    <script src="js/app.js" defer></script>
 </body>
 </html>
