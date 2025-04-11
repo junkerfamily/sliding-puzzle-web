@@ -1311,19 +1311,11 @@ function showImageViewer(historyData) {
     // Calculate percentage of moves with numbers if available (for manual solves)
     let numberMovesInfo = '';
     if (historyData.movesWithNumbers !== undefined) {
-        // Show for both auto and manual solves
-        //if (historyData.autoSolved) {
-        //    // For auto-solved puzzles
-        //    numberMovesInfo = `
-        //        <p><strong>Numbers Enabled:</strong> ${historyData.showNumbers ? 'Yes' : 'No'}</p>
-        //    `;
-        //} else {
-            // For manually solved puzzles
             const percent = Math.round((historyData.movesWithNumbers / historyData.moves) * 100);
             numberMovesInfo = `
                 <p><strong>Moves with Numbers:</strong> ${historyData.movesWithNumbers} (${percent}% of total)</p>
             `;
-        //}
+        }
 
     // Use consistent format with completion method highlighted
     viewerDetails.innerHTML = `
