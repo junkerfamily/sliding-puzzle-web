@@ -171,7 +171,19 @@ button:hover {
     max-width: 500px;
 }
 
+.danger-button {
+    background-color: #ff4d4d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
 
+.danger-button:hover {
+    background-color: #e60000;
+}
 
 
 

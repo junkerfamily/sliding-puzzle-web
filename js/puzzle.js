@@ -14,6 +14,8 @@ let currentUser = null;
 let authInitialized = false;
 // Add a fallback mode flag
 let usingLocalStorage = false;
+let movesWithNumbers = 0;
+let lastMoveHadNumbers = true; // Assuming numbers are on by defaul
 
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -47,6 +49,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Add event listener for clear history button
+    const clearHistoryButton = document.getElementById('clear-history');
+    if (clearHistoryButton) {
+        clearHistoryButton.addEventListener('click', function(event) {
+            // Prevent event bubbling to avoid closing the modal
+            event.stopPropagation();
+            clearUserHistory();
+        });
+    }
+    
 
     const canvas = document.getElementById('puzzleCanvas');
     if (!canvas) {
@@ -69,12 +81,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     showNumbersCheckbox.addEventListener('change', function() {
         showNumbers = this.checked;
+        lastMoveHadNumbers = showNumbers;
         console.log("Show numbers changed to:", showNumbers);
-        
-        // If we have an image loaded, regenerate tiles
-        if (originalImage) {
-            regenerateTilesWithNumberPreference();
-        }
         
         // Save settings based on storage mode
         if (usingLocalStorage) {
@@ -82,6 +90,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             saveUserSettings();
         }
+
+        // Redraw tiles without resetting the game
+        redrawTilesWithCurrentSettings();
+
     });
     
     // Set up file upload
@@ -112,13 +124,22 @@ document.addEventListener('DOMContentLoaded', () => {
     useTwoEmptyTiles = twoEmptyTilesCheckbox.checked; // Initialize with default value
     
     twoEmptyTilesCheckbox.addEventListener('change', function() {
-        useTwoEmptyTiles = this.checked;
+       
         console.log("Two empty tiles changed to:", useTwoEmptyTiles);
         
-        // Reset the game to apply the new setting
-        if (originalImage) {
-            resetGame();
+        if (moveCount > 0) {
+            // Ask for confirmation
+            const confirmed = confirm("Changing this setting will reset your current puzzle and move count. Continue?");
+            
+            if (!confirmed) {
+                // If user cancels, revert the checkbox to its previous state
+                this.checked = !this.checked;
+                return;
+            }
         }
+        
+        // User either confirmed or there was no puzzle in progress
+        useTwoEmptyTiles = this.checked;
         
         // Save settings based on storage mode
         if (usingLocalStorage) {
@@ -126,6 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             saveUserSettings();
         }
+        // Reset the game with the new setting
+        resetGame();
+        
     });
     
     // Set up history button if it exists
@@ -526,8 +550,19 @@ function moveTile(clickedPos, targetEmptyPos) {
         }
         
         // Increment move counter and update display
+        // Successfully moved a tile
         moveCount++;
+        
+        // Track moves with numbers shown
+        if (showNumbers) {
+            movesWithNumbers++;
+        }
+        
+        // Remember the state for the last move
+        lastMoveHadNumbers = showNumbers;
+        
         updateMoveCounter();
+        drawTiles();
         
         // Check if puzzle is solved
         const solved = isSolved();
@@ -550,6 +585,10 @@ function moveTile(clickedPos, targetEmptyPos) {
 function solvePuzzle() {
     // Reset move counter
     moveCount = 0;
+    
+    // When auto-solving, track if numbers were shown
+    movesWithNumbers = showNumbers ? 1 : 0; // Set to 1 if numbers were on
+    
     updateMoveCounter();
     
     if (!originalImage) {
@@ -559,8 +598,8 @@ function solvePuzzle() {
     
     resetToSolvedState();
     
-    // Save this completion to history
-    saveGameCompletion();
+    // Save this completion to history WITH the autoSolved flag
+    saveGameCompletion(true); // Pass true to indicate auto-solve
     
     // Show feedback
     alert("Puzzle solved automatically!");
@@ -795,9 +834,14 @@ function displayUserHistory() {
                     const settingsCell = document.createElement('td');
                     settingsCell.textContent = `${data.showNumbers ? 'Numbers' : 'No Numbers'}, ${data.twoEmptyTiles ? '2' : '1'} empty`;
                     
+                    // In your history display function, update how it displays moves:
                     const movesCell = document.createElement('td');
-                    movesCell.textContent = data.moves || 'Unknown';
-                    
+                    if (data.autoSolved) {
+                        movesCell.innerHTML = '<span style="color: #4a86e8;">Auto-Mode</span>';
+                    } else {
+                        movesCell.textContent = data.moves || 'Unknown';
+                    }
+
                     row.appendChild(thumbnailCell);
                     row.appendChild(dateCell);
                     row.appendChild(settingsCell);
@@ -1153,7 +1197,8 @@ function forceRefreshHistory() {
   }
 
   // Single implementation of saveGameCompletion
-  function saveGameCompletion() {
+  function saveGameCompletion(autoSolved = false) {
+    console.log("🏆 Saving game completion, auto-solved:", autoSolved);
     console.log("🔍 FUNCTION ENTRY: saveGameCompletion called");
     
     if (usingLocalStorage) {
@@ -1210,6 +1255,8 @@ function forceRefreshHistory() {
             showNumbers: showNumbers,
             twoEmptyTiles: useTwoEmptyTiles,
             moves: moveCount,
+            movesWithNumbers: movesWithNumbers, // Add this line
+            autoSolved: autoSolved, // Add this line
             date: firebase.firestore.FieldValue.serverTimestamp()
         })
         .then(() => {
@@ -1228,19 +1275,23 @@ function forceRefreshHistory() {
 
 // Function to show the image viewer
 // Function to show the image viewer
+// In your showImageViewer function, update the details template
 function showImageViewer(historyData) {
     console.log("Opening image viewer with data:", historyData);
     
+    console.log("HISTORY DATA FULL DUMP:", historyData);
+    console.log("Has movesWithNumbers?", historyData.movesWithNumbers !== undefined);
+    console.log("Value:", historyData.movesWithNumbers);
+    console.log("Auto solved?", historyData.autoSolved);
+    
+
     const viewerModal = document.getElementById('image-viewer-modal');
     const fullSizeImage = document.getElementById('full-size-image');
     const viewerTitle = document.getElementById('image-viewer-title');
     const viewerDetails = document.getElementById('image-viewer-details');
     
     if (!viewerModal || !fullSizeImage) {
-        console.error("Image viewer elements not found", {
-            modal: !!viewerModal,
-            image: !!fullSizeImage
-        });
+        console.error("Image viewer elements not found");
         return;
     }
     
@@ -1256,22 +1307,259 @@ function showImageViewer(historyData) {
     }
     
     viewerTitle.textContent = `Completed Puzzle`;
+    
+    // Calculate percentage of moves with numbers if available (for manual solves)
+    let numberMovesInfo = '';
+    if (historyData.movesWithNumbers !== undefined) {
+        // Show for both auto and manual solves
+        //if (historyData.autoSolved) {
+        //    // For auto-solved puzzles
+        //    numberMovesInfo = `
+        //        <p><strong>Numbers Enabled:</strong> ${historyData.showNumbers ? 'Yes' : 'No'}</p>
+        //    `;
+        //} else {
+            // For manually solved puzzles
+            const percent = Math.round((historyData.movesWithNumbers / historyData.moves) * 100);
+            numberMovesInfo = `
+                <p><strong>Moves with Numbers:</strong> ${historyData.movesWithNumbers} (${percent}% of total)</p>
+            `;
+        //}
+
+    // Use consistent format with completion method highlighted
     viewerDetails.innerHTML = `
         <p><strong>Date:</strong> ${dateStr}</p>
         <p><strong>Settings:</strong> ${historyData.showNumbers ? 'Numbers' : 'No Numbers'}, 
                                      ${historyData.twoEmptyTiles ? '2' : '1'} empty tiles</p>
-        <p><strong>Moves:</strong> ${historyData.moves || 'Unknown'}</p>
+        <p><strong>Completion:</strong> ${historyData.autoSolved ? 
+            '<span style="color: #4a86e8;">Auto-Solved</span>' : 
+            `Solved in ${historyData.moves} moves`}
+        </p>
+        ${numberMovesInfo}
     `;
+    }
     
     // Show the modal
     viewerModal.style.display = 'block';
-    console.log("Image viewer modal should now be visible");
     
-    // Set up close button handler
+    // Close button functionality
     const closeBtn = viewerModal.querySelector('.close');
     if (closeBtn) {
         closeBtn.onclick = function() {
             viewerModal.style.display = 'none';
         };
     }
+}
+
+
+// Function to clear user history
+function clearUserHistory() {
+    if (!currentUser) {
+        console.error("Cannot clear history: No user authenticated");
+        return;
+    }
+    
+    // Show confirmation dialog
+    if (!confirm("Are you sure you want to delete all your puzzle history? This cannot be undone.")) {
+        return; // User cancelled
+    }
+    
+    console.log("🗑️ Clearing history for user:", currentUser.uid);
+    
+    // Get all history entries for this user
+    firebase.firestore().collection('gameHistory')
+        .where('userId', '==', currentUser.uid)
+        .get()
+        .then((querySnapshot) => {
+            // Create a batch to delete all documents
+            const batch = firebase.firestore().batch();
+            
+            querySnapshot.forEach((doc) => {
+                batch.delete(doc.ref);
+            });
+            
+            // Commit the batch
+            return batch.commit();
+        })
+        .then(() => {
+            console.log("✅ History cleared successfully");
+            // Refresh the history display
+            const historyData = document.getElementById('history-data');
+            historyData.innerHTML = '<tr><td colspan="4">No puzzle history yet! Complete a puzzle to see your history.</td></tr>';
+            
+            // Show confirmation to user
+            alert("Your puzzle history has been cleared.");
+        })
+        .catch((error) => {
+            console.error("❌ Error clearing history:", error);
+            alert("Failed to clear history: " + error.message);
+        });
+}
+
+// Replace your current redrawTilesWithCurrentSettings function with this:
+function redrawTilesWithCurrentSettings() {
+    if (!originalImage) {
+        console.log("No image to redraw");
+        return;
+    }
+    
+    console.log("Redrawing tiles with numbers:", showNumbers);
+    
+    // Keep track of original tile positions
+    const originalTileState = {...tiles};
+    
+    // Recreate tile images with/without numbers
+    tileImages = [];
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = tileSize;
+    tempCanvas.height = tileSize;
+    const tempContext = tempCanvas.getContext('2d');
+    
+    // Draw the full image to a temporary canvas
+    const fullCanvas = document.createElement('canvas');
+    fullCanvas.width = tileSize * gridSize;
+    fullCanvas.height = tileSize * gridSize;
+    const fullContext = fullCanvas.getContext('2d');
+    
+    // Calculate scaling to maintain aspect ratio
+    const imageAspect = originalImage.width / originalImage.height;
+    const canvasAspect = fullCanvas.width / fullCanvas.height;
+    
+    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+    if (imageAspect > canvasAspect) {
+        // Image is wider
+        drawHeight = fullCanvas.height;
+        drawWidth = originalImage.width * (fullCanvas.height / originalImage.height);
+        offsetX = (fullCanvas.width - drawWidth) / 2;
+    } else {
+        // Image is taller
+        drawWidth = fullCanvas.width;
+        drawHeight = originalImage.height * (fullCanvas.width / originalImage.width);
+        offsetY = (fullCanvas.height - drawHeight) / 2;
+    }
+    
+    // Draw the original image
+    fullContext.drawImage(originalImage, offsetX, offsetY, drawWidth, drawHeight);
+    
+    // Create tile images from this canvas
+    for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+            const tileIndex = i * gridSize + j;
+            
+            // Skip the last tile for a standard puzzle
+            if (tileIndex === gridSize * gridSize - 1) continue;
+            
+            // Clear the temporary canvas
+            tempContext.clearRect(0, 0, tileSize, tileSize);
+            
+            // Get the portion of the image for this tile
+            tempContext.drawImage(
+                fullCanvas, 
+                j * tileSize, i * tileSize, 
+                tileSize, tileSize, 
+                0, 0, tileSize, tileSize
+            );
+            
+            // Add number if showNumbers is true
+            if (showNumbers) {
+                const tileNumber = tileIndex + 1;
+                tempContext.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                tempContext.fillRect(5, 5, 20, 20);
+                tempContext.fillStyle = 'black';
+                tempContext.font = 'bold 16px Arial';
+                tempContext.textAlign = 'center';
+                tempContext.textBaseline = 'middle';
+                tempContext.fillText(tileNumber.toString(), 15, 15);
+            }
+            
+            // Store the tile image
+            tileImages.push(tempCanvas.toDataURL());
+        }
+    }
+    
+    // Restore the original game state
+    tiles = originalTileState;
+    
+    // Redraw all tiles in their current positions
+    const canvas = document.getElementById('puzzleCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Clear the canvas first
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw each tile at its current position
+    for (const [position, tileIdx] of Object.entries(tiles)) {
+        // Skip the second empty position if present
+        if (position === 'secondEmptyPos') continue;
+        
+        const [row, col] = position.split(',').map(Number);
+        
+        // Skip empty positions
+        if (row === emptyPos[0] && col === emptyPos[1]) continue;
+        if (useTwoEmptyTiles && 
+            tiles.secondEmptyPos && 
+            row === tiles.secondEmptyPos[0] && 
+            col === tiles.secondEmptyPos[1]) continue;
+        
+        // Draw the tile at the correct position
+        const img = new Image();
+        img.src = tileImages[tileIdx];
+        img.onload = () => {
+            ctx.drawImage(img, col * tileSize, row * tileSize);
+        };
+    }
+    
+    console.log("Tiles redrawn successfully with current positions preserved");
+}
+
+
+function updateMoveCounter() {
+    const counter = document.getElementById('move-counter');
+    counter.textContent = `Moves: ${moveCount}`;
+    
+    // Add tooltip with additional info
+    if (moveCount > 0) {
+        const percentWithNumbers = Math.round((movesWithNumbers / moveCount) * 100);
+        counter.title = `${movesWithNumbers} moves (${percentWithNumbers}%) with numbers shown`;
+    } else {
+        counter.title = '';
+    }
+}
+
+// Add this function after updateMoveCounter
+
+// Function to redraw all tiles in their current positions
+function drawTiles() {
+    if (!tileImages.length) return;
+    
+    const canvas = document.getElementById('puzzleCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Clear the canvas first
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw each tile at its current position
+    for (const [position, tileIdx] of Object.entries(tiles)) {
+        // Skip the second empty position if present
+        if (position === 'secondEmptyPos') continue;
+        
+        const [row, col] = position.split(',').map(Number);
+        
+        // Skip empty positions
+        if (row === emptyPos[0] && col === emptyPos[1]) continue;
+        if (useTwoEmptyTiles && 
+            tiles.secondEmptyPos && 
+            row === tiles.secondEmptyPos[0] && 
+            col === tiles.secondEmptyPos[1]) continue;
+        
+        // Draw the tile at the correct position
+        const img = new Image();
+        img.src = tileImages[tileIdx];
+        
+        // Use onload to ensure the image is drawn
+        img.onload = () => {
+            ctx.drawImage(img, col * tileSize, row * tileSize);
+        };
+    }
+    
+    console.log("Tiles redrawn");
 }

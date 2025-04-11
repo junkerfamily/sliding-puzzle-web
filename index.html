@@ -49,6 +49,11 @@
                 </thead>
                 <tbody id="history-data"></tbody>
             </table>
+            
+            <!-- Add the clear history button here -->
+            <div style="text-align: center; margin-top: 20px;">
+                <button id="clear-history" class="danger-button">Clear My Puzzle History</button>
+            </div>
         </div>
     </div>
     <div id="image-viewer-modal" class="modal">
@@ -61,6 +66,12 @@
             <div id="image-viewer-details" style="margin-top: 10px;"></div>
         </div>
     </div>
+   
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-check-compat.js"></script>
+    <script>
+      // After initializing Firebase
+      firebase.appCheck().activate('YOUR_RECAPTCHA_KEY', true);
+    </script>
 
     <!-- Firebase App (the core Firebase SDK) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
