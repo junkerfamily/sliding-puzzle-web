@@ -54,12 +54,7 @@ button:hover {
 }
 
 
-.option-container {
-    margin-top: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+
 
 .option-container input[type="checkbox"] {
     margin-right: 5px;
@@ -87,4 +82,97 @@ button:hover {
 .option-container input[type="checkbox"] {
     margin-right: 5px;
 }
+
+/* Add to your styles.css file */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.4);
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 15% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 600px;
+    border-radius: 5px;
+    position: relative;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+}
+
+.close:hover,
+.close:focus {
+    color: black;
+    text-decoration: none;
+}
+
+#history-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+#history-table th, #history-table td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+#history-table th {
+    background-color: #f2f2f2;
+}
+
+#history-data td {
+    vertical-align: middle;
+}
+
+#show-history {
+    margin-top: 10px;
+}
+
+/* Clickable row styling */
+.clickable-row {
+    transition: background-color 0.2s;
+}
+
+.clickable-row:hover {
+    background-color: #f5f5f5;
+}
+
+/* Image viewer styling */
+#full-size-image {
+    border: 1px solid #ddd;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    margin-top: 10px;
+}
+
+#image-viewer-details {
+    text-align: left;
+    margin: 15px auto;
+    max-width: 500px;
+}
+
+
+
+
+
 

@@ -9,10 +9,45 @@ let showNumbers = true;
 let originalImage = null; // Store the original image for regenerating tiles
 let moveCount = 0; // Track number of moves made
 let useTwoEmptyTiles = false;
+// Initialize Firebase auth and get user
+let currentUser = null;
+let authInitialized = false;
+// Add a fallback mode flag
+let usingLocalStorage = false;
 
 
-// Wait for the DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', () => {
+    
+    // Modal debugging - without redeclaring variables
+    const historyModal = document.getElementById('history-modal');
+    const closeBtn = historyModal.querySelector('.close');
+
+    // Make sure we have the history button
+    if (document.getElementById('show-history')) {
+        document.getElementById('show-history').addEventListener('click', function() {
+            console.log("🖱️ History button clicked");
+            displayUserHistory();
+            console.log("📊 Modal should be displayed now");
+        });
+    }
+
+    // Add close button listener if not already present
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function() {
+            console.log("❌ Close button clicked");
+            historyModal.style.display = 'none';
+        });
+    }
+
+    // Close when clicking outside
+    window.addEventListener('click', function(event) {
+        if (event.target === historyModal) {
+            console.log("❌ Clicked outside modal, closing");
+            historyModal.style.display = 'none';
+        }
+    });
+
+
     const canvas = document.getElementById('puzzleCanvas');
     if (!canvas) {
         console.error("Canvas element not found!");
@@ -23,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.width = tileSize * gridSize;
     canvas.height = tileSize * gridSize;
     
-    // Add event listeners
+    // Add event listeners for game controls
     canvas.addEventListener('click', handleTileClick);
     document.getElementById('reset-game').addEventListener('click', resetGame);
     document.getElementById('solve-puzzle').addEventListener('click', solvePuzzle);
@@ -39,6 +74,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // If we have an image loaded, regenerate tiles
         if (originalImage) {
             regenerateTilesWithNumberPreference();
+        }
+        
+        // Save settings based on storage mode
+        if (usingLocalStorage) {
+            saveLocalSettings();
+        } else {
+            saveUserSettings();
         }
     });
     
@@ -77,14 +119,77 @@ document.addEventListener('DOMContentLoaded', () => {
         if (originalImage) {
             resetGame();
         }
+        
+        // Save settings based on storage mode
+        if (usingLocalStorage) {
+            saveLocalSettings();
+        } else {
+            saveUserSettings();
+        }
+    });
+    
+    // Set up history button if it exists
+    const historyButton = document.getElementById('show-history');
+    if (historyButton) {
+        historyButton.addEventListener('click', function() {
+            displayUserHistory();
+        });
+    }
+    
+    // Set up modal close buttons if they exist
+    const closeButtons = document.querySelectorAll('.close');
+    closeButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const modal = this.closest('.modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        });
     });
     
     // Initialize move counter
     updateMoveCounter();
     
+    // Initialize Firebase first
+    try {
+        console.log("Attempting to initialize Firebase...");
+        initializeFirebase();
+    } catch (error) {
+        console.error("Firebase initialization failed:", error);
+        // Switch to localStorage fallback
+        usingLocalStorage = true;
+        authInitialized = true;
+        loadLocalSettings();
+    }
+    
     // Initialize with a blank state
     initializeBlankState();
+    
+    // Close modals when clicking outside of content
+    window.addEventListener('click', function(event) {
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+    });
+    
+    // Add beforeunload event to save state when user leaves
+    window.addEventListener('beforeunload', function() {
+        if (originalImage) {
+            if (usingLocalStorage) {
+                saveLocalSettings();
+            } else if (currentUser) {
+                saveUserSettings();
+            }
+        }
+    });
+    
+    console.log("Game initialization complete. Using " + 
+        (usingLocalStorage ? "localStorage for persistence" : "Firebase for cloud storage"));
 });
+
 
 // Initialize with a blank state
 function initializeBlankState() {
@@ -285,6 +390,7 @@ function resetGame() {
     moveCount = 0;
     updateMoveCounter();
     
+    
     const canvas = document.getElementById('puzzleCanvas');
     const context = canvas.getContext('2d');
     context.clearRect(0, 0, canvas.width, canvas.height);
@@ -306,8 +412,13 @@ function resetGame() {
     
     // Store empty positions
     emptyPos = positions[positions.length - 1]; // First empty position
-    let secondEmptyPos = useTwoEmptyTiles ? positions[positions.length - 2] : null; // Second empty position (if needed)
-    
+    let secondEmptyPos = null;
+
+    if (useTwoEmptyTiles) {
+        secondEmptyPos = positions[positions.length - 2]; // Second empty position
+        tiles.secondEmptyPos = secondEmptyPos; // Store in tiles object for tracking
+    }
+
     // Draw all tiles except the empty ones
     for (let idx = 0; idx < positions.length - emptyTileCount; idx++) {
         const pos = positions[idx];
@@ -379,7 +490,8 @@ function isAdjacent(clickedPos, emptyPosition) {
     return (Math.abs(y1 - y2) === 1 && x1 === x2) || (Math.abs(x1 - x2) === 1 && y1 === y2);
 }
 
-// Update moveTile to accept a specific target empty position
+// Update the moveTile function to check for solution after move
+// Enhanced moveTile function with completion detection
 function moveTile(clickedPos, targetEmptyPos) {
     const tileIdx = tiles[clickedPos];
     delete tiles[clickedPos];
@@ -416,10 +528,25 @@ function moveTile(clickedPos, targetEmptyPos) {
         // Increment move counter and update display
         moveCount++;
         updateMoveCounter();
+        
+        // Check if puzzle is solved
+        const solved = isSolved();
+        console.log("🧩 Checking if puzzle is solved:", solved ? "YES!" : "No");
+        
+        if (solved) {
+            // Wait a brief moment for the UI to update before showing completion
+            setTimeout(() => {
+                alert(`Congratulations! You solved the puzzle in ${moveCount} moves!`);
+                console.log("🎮 Puzzle solved naturally in", moveCount, "moves");
+                saveGameCompletion();
+            }, 100);
+        }
     };
 }
 
+
 // Function to solve the puzzle
+// Update the solvePuzzle function to save completion
 function solvePuzzle() {
     // Reset move counter
     moveCount = 0;
@@ -431,6 +558,12 @@ function solvePuzzle() {
     }
     
     resetToSolvedState();
+    
+    // Save this completion to history
+    saveGameCompletion();
+    
+    // Show feedback
+    alert("Puzzle solved automatically!");
 }
 
 // Reset to solved state
@@ -478,5 +611,667 @@ function resetToSolvedState() {
         tiles.secondEmptyPos = [gridSize-1, gridSize-2]; // Next to bottom right
     } else {
         emptyPos = [gridSize-1, gridSize-1]; // Just bottom right
+    }
+}
+
+// Modify the initializeFirebase function
+function initializeFirebase() {
+    console.log("Initializing Firebase authentication...");
+    
+    // Sign in anonymously
+    firebase.auth().signInAnonymously()
+        .then((userCredential) => {
+            // Get the current user
+            currentUser = userCredential.user;
+            authInitialized = true;
+            usingLocalStorage = false;
+            console.log("Anonymous user signed in successfully:", currentUser.uid);
+            
+            // Load user data if available
+            loadUserData();
+        })
+        .catch((error) => {
+            console.error("Anonymous auth error:", error);
+            
+            // Switch to localStorage mode
+            usingLocalStorage = true;
+            authInitialized = true;
+            console.log("Switching to localStorage fallback mode");
+            
+            // Generate a local user ID if needed
+            if (!localStorage.getItem('puzzleUserId')) {
+                localStorage.setItem('puzzleUserId', 'local_' + Math.random().toString(36).substring(2, 15));
+            }
+            
+            // Load settings from localStorage
+            loadLocalSettings();
+        });
+}
+
+
+
+  // Save game settings to Firestore
+  function saveUserSettings() {
+    if (!currentUser) return;
+    
+    firebase.firestore().collection('userSettings').doc(currentUser.uid).set({
+      showNumbers: showNumbers,
+      useTwoEmptyTiles: useTwoEmptyTiles,
+      lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+    })
+    .then(() => console.log("Settings saved"))
+    .catch((error) => console.error("Error saving settings:", error));
+  }
+  
+  // Load user settings from Firestore
+  function loadUserData() {
+    if (!currentUser) return;
+    
+    firebase.firestore().collection('userSettings').doc(currentUser.uid).get()
+      .then((doc) => {
+        if (doc.exists) {
+          const data = doc.data();
+          // Apply settings
+          showNumbers = data.showNumbers;
+          useTwoEmptyTiles = data.useTwoEmptyTiles;
+          
+          // Update UI to reflect loaded settings
+          document.getElementById('show-numbers').checked = showNumbers;
+          document.getElementById('two-empty-tiles').checked = useTwoEmptyTiles;
+          
+          console.log("User settings loaded");
+        }
+      })
+      .catch((error) => console.error("Error loading settings:", error));
+  }
+
+  // Load game history
+  function loadUserHistory() {
+    if (!currentUser) return;
+    
+    firebase.firestore().collection('gameHistory')
+      .where('userId', '==', currentUser.uid)
+      .orderBy('date', 'desc')
+      .limit(10)
+      .get()
+      .then((querySnapshot) => {
+        console.log("Game history loaded, entries:", querySnapshot.size);
+        // We'll handle displaying the history later
+      })
+      .catch((error) => {
+        console.error("Error loading game history:", error);
+      });
+  }
+
+// Display user history in the modal with better error handling
+// Display user history in the modal with authentication retry
+// Improved displayUserHistory function
+function displayUserHistory() {
+    console.log("📜 Displaying user history...");
+    
+    const historyModal = document.getElementById('history-modal');
+    const historyData = document.getElementById('history-data');
+    
+    if (!historyModal || !historyData) {
+        console.error("❌ History modal elements not found");
+        return;
+    }
+    
+    historyModal.style.display = 'block';
+    historyData.innerHTML = '<tr><td colspan="4">Loading history...</td></tr>';
+    
+    if (!currentUser) {
+        console.error("❌ No user authenticated");
+        historyData.innerHTML = '<tr><td colspan="4">Please wait, connecting to database...</td></tr>';
+        return;
+    }
+    
+    console.log("🔍 Loading history for user:", currentUser.uid);
+    
+    firebase.firestore().collection('gameHistory')
+        .where('userId', '==', currentUser.uid)
+        .orderBy('date', 'desc')
+        .limit(10)
+        .get()
+        .then((querySnapshot) => {
+            console.log("📊 History query completed, entries found:", querySnapshot.size);
+            
+            historyData.innerHTML = '';
+            
+            if (querySnapshot.empty) {
+                historyData.innerHTML = '<tr><td colspan="4">No puzzle history yet! Complete a puzzle to see your history.</td></tr>';
+                return;
+            }
+            
+            // Correct order of operations for each entry
+            querySnapshot.forEach((doc) => {
+                try {
+                    console.log("📋 Processing history entry:", doc.id);
+                    const data = doc.data();
+                    
+                    // Create row FIRST
+                    const row = document.createElement('tr');
+                    
+                    // THEN add click event
+                    row.style.cursor = 'pointer';
+                    row.classList.add('clickable-row');
+                    row.addEventListener('click', function() {
+                        console.log("Row clicked! Data:", data);
+                        console.log("Has large image:", !!data.largeImageDataUrl);
+                        
+                        if (data.largeImageDataUrl) {
+                            showImageViewer(data);
+                        } else {
+                            console.log("No large image available for this entry");
+                        }
+                    });
+                    
+                    // Create cells and append them to row
+                    const thumbnailCell = document.createElement('td');
+                    const thumbnail = document.createElement('img');
+                    
+                    if (data.thumbnailDataUrl) {
+                        thumbnail.src = data.thumbnailDataUrl;
+                    } else {
+                        thumbnail.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5OTkiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSIzIiB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHJ4PSIyIiByeT0iMiI+PC9yZWN0PjxjaXJjbGUgY3g9IjguNSIgY3k9IjguNSIgcj0iMS41Ij48L2NpcmNsZT48cG9seWxpbmUgcG9pbnRzPSIyMSAxNSAxNiAxMCA1IDIxIj48L3BvbHlsaW5lPjwvc3ZnPg==';
+                    }
+                    
+                    thumbnail.width = 50;
+                    thumbnail.height = 50;
+                    thumbnail.style.objectFit = 'cover';
+                    thumbnailCell.appendChild(thumbnail);
+                    
+                    const dateCell = document.createElement('td');
+                    if (data.date) {
+                        try {
+                            dateCell.textContent = new Date(data.date.toDate()).toLocaleDateString();
+                        } catch (e) {
+                            dateCell.textContent = 'Unknown date';
+                        }
+                    } else {
+                        dateCell.textContent = 'Unknown date';
+                    }
+                    
+                    const settingsCell = document.createElement('td');
+                    settingsCell.textContent = `${data.showNumbers ? 'Numbers' : 'No Numbers'}, ${data.twoEmptyTiles ? '2' : '1'} empty`;
+                    
+                    const movesCell = document.createElement('td');
+                    movesCell.textContent = data.moves || 'Unknown';
+                    
+                    row.appendChild(thumbnailCell);
+                    row.appendChild(dateCell);
+                    row.appendChild(settingsCell);
+                    row.appendChild(movesCell);
+                    
+                    // Finally add row to table
+                    historyData.appendChild(row);
+                    console.log("✅ Added clickable row for entry:", doc.id);
+                } catch (e) {
+                    console.error("❌ Error processing history entry:", doc.id, e);
+                }
+            });
+        })
+        .catch((error) => {
+            console.error("❌ Error fetching history:", error);
+            historyData.innerHTML = '<tr><td colspan="4">Error loading history: ' + error.message + '</td></tr>';
+        });
+}
+
+// Add this function to puzzle.js
+// Enhanced isSolved function with better logging
+function isSolved() {
+    console.log("🔍 Checking if puzzle is solved...");
+    console.log("Current tiles state:", tiles);
+    
+    // For a 4x4 puzzle, check if all tiles are in order
+    for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+            // Skip checking the empty position(s)
+            if (i === gridSize-1 && j === gridSize-1) {
+                continue;
+            }
+            
+            if (useTwoEmptyTiles && i === gridSize-1 && j === gridSize-2) {
+                continue;
+            }
+            
+            const position = `${i},${j}`;
+            const expectedTileIdx = i * gridSize + j;
+            
+            // If any tile is out of place, puzzle is not solved
+            if (tiles[position] !== expectedTileIdx) {
+                console.log(`❌ Tile at ${position} is ${tiles[position]}, expected ${expectedTileIdx}`);
+                return false;
+            }
+        }
+    }
+    
+    console.log("✅ All tiles are in correct positions!");
+    return true;
+}
+
+
+// Fallback function to save game data without image
+// Simplified fallback function without imageId
+function saveGameDataWithoutImage() {
+    console.log("Saving game data without image...");
+    
+    firebase.firestore().collection('gameHistory').add({
+        userId: currentUser.uid,
+        showNumbers: showNumbers,
+        twoEmptyTiles: useTwoEmptyTiles,
+        moves: moveCount,
+        date: firebase.firestore.FieldValue.serverTimestamp()
+    })
+    .then(() => {
+        console.log("Game data saved without image");
+    })
+    .catch((error) => {
+        console.error("Complete failure saving game data:", error);
+    });
+}
+
+// Function to load user history data
+// Update the thumbnail part in your loadUserHistoryData function
+function loadUserHistoryData(historyData) {
+    console.log("Loading history data for user:", currentUser.uid);
+    
+    firebase.firestore().collection('gameHistory')
+        .where('userId', '==', currentUser.uid)
+        .orderBy('date', 'desc')
+        .limit(10)
+        .get()
+        .then((querySnapshot) => {
+            console.log("History query completed, entries found:", querySnapshot.size);
+            
+            // Clear loading message
+            historyData.innerHTML = '';
+            
+            if (querySnapshot.empty) {
+                historyData.innerHTML = '<tr><td colspan="4">No puzzle history yet! Complete a puzzle to see your history.</td></tr>';
+                return;
+            }
+            
+            // Add each history entry to the table
+            querySnapshot.forEach((doc) => {
+
+                row.style.cursor = 'pointer';
+                row.addEventListener('click', function() {
+                    console.log("Row clicked! Data:", data);
+                    console.log("Has large image:", !!data.largeImageDataUrl);
+                    
+                    if (data.largeImageDataUrl) {
+                        showImageViewer(data);
+                    } else {
+                        console.log("No large image available for this entry");
+                    }
+                });
+
+                // Add a visual hover effect with CSS
+                row.classList.add('clickable-row');
+
+                console.log("Processing history entry:", doc.id);
+                const data = doc.data();
+                const row = document.createElement('tr');
+                
+                // Create thumbnail cell
+                const thumbnailCell = document.createElement('td');
+                const thumbnail = document.createElement('img');
+                
+                if (data.thumbnailDataUrl) {
+                    thumbnail.src = data.thumbnailDataUrl;
+                    console.log("Found thumbnail data URL");
+                } else {
+                    // Placeholder image if no thumbnail
+                    thumbnail.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5OTkiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSIzIiB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHJ4PSIyIiByeT0iMiI+PC9yZWN0PjxjaXJjbGUgY3g9IjguNSIgY3k9IjguNSIgcj0iMS41Ij48L2NpcmNsZT48cG9seWxpbmUgcG9pbnRzPSIyMSAxNSAxNiAxMCA1IDIxIj48L3BvbHlsaW5lPjwvc3ZnPg==';
+                    console.log("No thumbnail data URL found, using placeholder");
+                }
+                
+                thumbnail.width = 50;
+                thumbnail.height = 50;
+                thumbnail.style.objectFit = 'cover';
+                thumbnailCell.appendChild(thumbnail);
+                
+                // Rest of your code for date, settings, moves cells
+                // ...
+            });
+        })
+        .catch((error) => {
+            console.error("Error displaying history:", error);
+            historyData.innerHTML = '<tr><td colspan="4">Error loading history: ' + error.message + '</td></tr>';
+        });
+}
+
+
+// Function to save settings to localStorage
+function saveLocalSettings() {
+    if (!usingLocalStorage) return;
+    
+    localStorage.setItem('puzzleSettings', JSON.stringify({
+        showNumbers: showNumbers,
+        useTwoEmptyTiles: useTwoEmptyTiles
+    }));
+}
+
+// Function to load settings from localStorage
+function loadLocalSettings() {
+    if (!usingLocalStorage) return;
+    
+    const savedSettings = localStorage.getItem('puzzleSettings');
+    if (savedSettings) {
+        try {
+            const settings = JSON.parse(savedSettings);
+            showNumbers = settings.showNumbers;
+            useTwoEmptyTiles = settings.useTwoEmptyTiles;
+            
+            // Update UI
+            document.getElementById('show-numbers').checked = showNumbers;
+            document.getElementById('two-empty-tiles').checked = useTwoEmptyTiles;
+        } catch (e) {
+            console.error("Error parsing local settings:", e);
+        }
+    }
+}
+
+// Function to save game completion locally
+function saveLocalGameCompletion() {
+    if (!usingLocalStorage || !originalImage) return;
+    
+    // Get existing history or create new array
+    let history = [];
+    try {
+        const savedHistory = localStorage.getItem('puzzleHistory');
+        if (savedHistory) {
+            history = JSON.parse(savedHistory);
+        }
+    } catch (e) {
+        console.error("Error parsing local history:", e);
+    }
+    
+    // Add new completion to history
+    history.unshift({
+        date: new Date().toISOString(),
+        showNumbers: showNumbers,
+        twoEmptyTiles: useTwoEmptyTiles,
+        moves: moveCount
+    });
+    
+    // Limit history to 10 items
+    if (history.length > 10) {
+        history = history.slice(0, 10);
+    }
+    
+    // Save back to localStorage
+    localStorage.setItem('puzzleHistory', JSON.stringify(history));
+}
+
+// Function to display history from localStorage
+function displayLocalHistory(historyData) {
+    historyData.innerHTML = '<tr><td colspan="4">Loading history...</td></tr>';
+    
+    try {
+        const savedHistory = localStorage.getItem('puzzleHistory');
+        if (!savedHistory) {
+            historyData.innerHTML = '<tr><td colspan="4">No puzzle history yet! Complete a puzzle to see your history.</td></tr>';
+            return;
+        }
+        
+        const history = JSON.parse(savedHistory);
+        if (history.length === 0) {
+            historyData.innerHTML = '<tr><td colspan="4">No puzzle history yet! Complete a puzzle to see your history.</td></tr>';
+            return;
+        }
+        
+        // Clear loading message
+        historyData.innerHTML = '';
+        
+        // Add each history entry
+        history.forEach(entry => {
+            const row = document.createElement('tr');
+            
+            // Create thumbnail cell (placeholder)
+            const thumbnailCell = document.createElement('td');
+            const thumbnail = document.createElement('img');
+            thumbnail.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5OTkiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzIiB5PSIzIiB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHJ4PSIyIiByeT0iMiI+PC9yZWN0PjxjaXJjbGUgY3g9IjguNSIgY3k9IjguNSIgcj0iMS41Ij48L2NpcmNsZT48cG9seWxpbmUgcG9pbnRzPSIyMSAxNSAxNiAxMCA1IDIxIj48L3BvbHlsaW5lPjwvc3ZnPg==';
+            thumbnail.width = 50;
+            thumbnail.height = 50;
+            thumbnailCell.appendChild(thumbnail);
+            
+            // Create date cell
+            const dateCell = document.createElement('td');
+            try {
+                dateCell.textContent = new Date(entry.date).toLocaleDateString();
+            } catch (e) {
+                dateCell.textContent = 'Unknown date';
+            }
+            
+            // Create settings cell
+            const settingsCell = document.createElement('td');
+            settingsCell.textContent = `${entry.showNumbers ? 'Numbers' : 'No Numbers'}, ${entry.twoEmptyTiles ? '2' : '1'} empty`;
+            
+            // Create moves cell
+            const movesCell = document.createElement('td');
+            movesCell.textContent = entry.moves || 'Unknown';
+            
+            // Add cells to row
+            row.appendChild(thumbnailCell);
+            row.appendChild(dateCell);
+            row.appendChild(settingsCell);
+            row.appendChild(movesCell);
+            
+            // Add row to table
+            historyData.appendChild(row);
+        });
+    } catch (e) {
+        console.error("Error displaying local history:", e);
+        historyData.innerHTML = '<tr><td colspan="4">Error loading history: ' + e.message + '</td></tr>';
+    }
+}
+
+
+// Separate function for image upload
+function saveImageThumbnail(imageId) {
+    console.log("🖼️ Attempting to save image thumbnail for imageId:", imageId);
+    
+    // First, save the thumbnail image to Storage
+    const canvas = document.createElement('canvas');
+    canvas.width = 100;
+    canvas.height = 100;
+    const ctx = canvas.getContext('2d');
+    
+    try {
+        // Scale the image to fit the thumbnail
+        const size = Math.min(originalImage.width, originalImage.height);
+        const offsetX = (originalImage.width - size) / 2;
+        const offsetY = (originalImage.height - size) / 2;
+        
+        ctx.drawImage(
+            originalImage, 
+            offsetX, offsetY, size, size,
+            0, 0, 100, 100
+        );
+        
+        console.log("📏 Canvas prepared successfully");
+        
+        // Convert to blob
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                console.error("❌ Failed to convert canvas to blob");
+                return;
+            }
+            
+            console.log("📦 Blob created, size:", Math.round(blob.size/1024), "KB");
+            
+            // Upload thumbnail to Firebase Storage
+            const storageRef = firebase.storage().ref();
+            const imageRef = storageRef.child(`thumbnails/${currentUser.uid}/${imageId}.jpg`);
+            
+            console.log("📤 Starting image upload to path:", `thumbnails/${currentUser.uid}/${imageId}.jpg`);
+            
+            imageRef.put(blob).then((snapshot) => {
+                console.log("📤 Image uploaded successfully");
+                return snapshot.ref.getDownloadURL();
+            })
+            .then((downloadURL) => {
+                console.log("🔗 Got download URL:", downloadURL.substring(0, 50) + "...");
+                
+                // Update the existing document with the image URL
+                return firebase.firestore().collection('gameHistory')
+                    .where('userId', '==', currentUser.uid)
+                    .where('imageId', '==', imageId)
+                    .get()
+                    .then((querySnapshot) => {
+                        if (!querySnapshot.empty) {
+                            // Update the first matching document
+                            return querySnapshot.docs[0].ref.update({
+                                imageUrl: downloadURL
+                            });
+                        }
+                    });
+            })
+            .then(() => {
+                console.log("🎉 Image URL added to history document");
+                forceRefreshHistory(); // Add this line to refresh the history display
+            })
+            .catch((error) => {
+                console.error("❌ Error in Firebase Storage:", error);
+            });
+        }, 'image/jpeg', 0.8);
+    } catch (e) {
+        console.error("❌ Error preparing canvas:", e);
+    }
+}
+
+// Force refresh history after image upload completes
+function forceRefreshHistory() {
+    // Check if the modal is visible and refresh if it is
+    const historyModal = document.getElementById('history-modal');
+    if (historyModal && historyModal.style.display === 'block') {
+      console.log("🔄 Forcing history refresh to show new thumbnails");
+      displayUserHistory();
+    }
+  }
+
+  // Single implementation of saveGameCompletion
+  function saveGameCompletion() {
+    console.log("🔍 FUNCTION ENTRY: saveGameCompletion called");
+    
+    if (usingLocalStorage) {
+        console.log("Using localStorage mode");
+        saveLocalGameCompletion();
+        return;
+    }
+    
+    if (!currentUser || !originalImage) {
+        console.error("Cannot save: No user or image");
+        return;
+    }
+    
+    try {
+        // Create a thumbnail (small) version
+        const thumbnailCanvas = document.createElement('canvas');
+        thumbnailCanvas.width = 50;
+        thumbnailCanvas.height = 50;
+        const thumbCtx = thumbnailCanvas.getContext('2d');
+        
+        // Create a larger version for viewing
+        const largeCanvas = document.createElement('canvas');
+        largeCanvas.width = 300;
+        largeCanvas.height = 300;
+        const largeCtx = largeCanvas.getContext('2d');
+        
+        const size = Math.min(originalImage.width, originalImage.height);
+        const offsetX = (originalImage.width - size) / 2;
+        const offsetY = (originalImage.height - size) / 2;
+        
+        // Draw thumbnail
+        thumbCtx.drawImage(
+            originalImage,
+            offsetX, offsetY, size, size,
+            0, 0, 50, 50
+        );
+        
+        // Draw large image
+        largeCtx.drawImage(
+            originalImage,
+            offsetX, offsetY, size, size,
+            0, 0, 300, 300
+        );
+        
+        const thumbnailDataUrl = thumbnailCanvas.toDataURL('image/jpeg', 0.5);
+        const largeImageDataUrl = largeCanvas.toDataURL('image/jpeg', 0.8);
+        console.log("Images created for storage");
+        
+        // Save to Firestore with both images
+        firebase.firestore().collection('gameHistory').add({
+            userId: currentUser.uid,
+            thumbnailDataUrl: thumbnailDataUrl,
+            largeImageDataUrl: largeImageDataUrl,
+            showNumbers: showNumbers,
+            twoEmptyTiles: useTwoEmptyTiles,
+            moves: moveCount,
+            date: firebase.firestore.FieldValue.serverTimestamp()
+        })
+        .then(() => {
+            console.log("✅ Game completion saved with images");
+            forceRefreshHistory();
+        })
+        .catch((error) => {
+            console.error("Error saving to Firestore:", error);
+            saveGameDataWithoutImage();
+        });
+    } catch (e) {
+        console.error("Error during image creation:", e);
+        saveGameDataWithoutImage();
+    }
+}
+
+// Function to show the image viewer
+// Function to show the image viewer
+function showImageViewer(historyData) {
+    console.log("Opening image viewer with data:", historyData);
+    
+    const viewerModal = document.getElementById('image-viewer-modal');
+    const fullSizeImage = document.getElementById('full-size-image');
+    const viewerTitle = document.getElementById('image-viewer-title');
+    const viewerDetails = document.getElementById('image-viewer-details');
+    
+    if (!viewerModal || !fullSizeImage) {
+        console.error("Image viewer elements not found", {
+            modal: !!viewerModal,
+            image: !!fullSizeImage
+        });
+        return;
+    }
+    
+    // Set the image source
+    fullSizeImage.src = historyData.largeImageDataUrl;
+    
+    // Set the title and details
+    let dateStr = 'Unknown date';
+    try {
+        dateStr = new Date(historyData.date.toDate()).toLocaleString();
+    } catch (e) {
+        console.error("Date parsing error:", e);
+    }
+    
+    viewerTitle.textContent = `Completed Puzzle`;
+    viewerDetails.innerHTML = `
+        <p><strong>Date:</strong> ${dateStr}</p>
+        <p><strong>Settings:</strong> ${historyData.showNumbers ? 'Numbers' : 'No Numbers'}, 
+                                     ${historyData.twoEmptyTiles ? '2' : '1'} empty tiles</p>
+        <p><strong>Moves:</strong> ${historyData.moves || 'Unknown'}</p>
+    `;
+    
+    // Show the modal
+    viewerModal.style.display = 'block';
+    console.log("Image viewer modal should now be visible");
+    
+    // Set up close button handler
+    const closeBtn = viewerModal.querySelector('.close');
+    if (closeBtn) {
+        closeBtn.onclick = function() {
+            viewerModal.style.display = 'none';
+        };
     }
 }
