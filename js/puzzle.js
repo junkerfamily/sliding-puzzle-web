@@ -174,17 +174,21 @@ document.addEventListener('DOMContentLoaded', () => {
     updateMoveCounter();
     
     // Initialize Firebase first
-    try {
-        console.log("Attempting to initialize Firebase...");
-        initializeFirebase();
-    } catch (error) {
-        console.error("Firebase initialization failed:", error);
-        // Switch to localStorage fallback
+
+    console.log("Attempting to initialize Firebase...");
+    initializeFirebase()
+    .then(() => {
+        console.log("Firebase initialized successfully with user:", currentUser.uid);
+    })
+    .catch((error) => {
+        console.error("Failed to initialize Firebase:", error);
         usingLocalStorage = true;
+        console.log("Falling back to localStorage mode");
         authInitialized = true;
         loadLocalSettings();
-    }
-    
+    });
+
+   
     // Initialize with a blank state
     initializeBlankState();
     
@@ -585,36 +589,28 @@ function resetToSolvedState() {
 function initializeFirebase() {
     console.log("Initializing Firebase authentication...");
     
-    // Sign in anonymously
-    firebase.auth().signInAnonymously()
-        .then((userCredential) => {
-            // Get the current user
-            currentUser = userCredential.user;
-            authInitialized = true;
-            usingLocalStorage = false;
-            console.log("Anonymous user signed in successfully:", currentUser.uid);
-            
-            // Load user data if available
-            loadUserData();
-        })
-        .catch((error) => {
-            console.error("Anonymous auth error:", error);
-            
-            // Switch to localStorage mode
-            usingLocalStorage = true;
-            authInitialized = true;
-            console.log("Switching to localStorage fallback mode");
-            
-            // Generate a local user ID if needed
-            if (!localStorage.getItem('puzzleUserId')) {
-                localStorage.setItem('puzzleUserId', 'local_' + Math.random().toString(36).substring(2, 15));
-            }
-            
-            // Load settings from localStorage
-            loadLocalSettings();
-        });
+    return new Promise((resolve, reject) => {
+        // Check if already signed in
+        if (firebase.auth().currentUser) {
+            console.log("Already signed in:", firebase.auth().currentUser.uid);
+            currentUser = firebase.auth().currentUser;
+            resolve(currentUser);
+            return;
+        }
+        
+        firebase.auth().signInAnonymously()
+            .then((userCredential) => {
+                console.log("Anonymous authentication successful");
+                currentUser = userCredential.user;
+                console.log("User ID:", currentUser.uid);
+                resolve(currentUser);
+            })
+            .catch((error) => {
+                console.error("Authentication error:", error);
+                reject(error);
+            });
+    });
 }
-
 
 
   // Save game settings to Firestore
@@ -857,17 +853,8 @@ function forceRefreshHistory() {
 
   // Single implementation of saveGameCompletion
   function saveGameCompletion(autoSolved = false) {
-    console.log("🔍 FUNCTION ENTRY: saveGameCompletion called");
+    console.log("🔍 Saving game completion, auto-solved:", autoSolved);
     
-    console.log("🏆 Saving game completion, auto-solved:", autoSolved);
-    console.log("🔍 STATS: Moves:", moveCount, "Moves with numbers:", movesWithNumbers);
-    
-    // Ensure movesWithNumbers is valid (prevent potential division by zero)
-    if (moveCount > 0 && (movesWithNumbers === undefined || movesWithNumbers === null)) {
-        console.warn("⚠️ movesWithNumbers was undefined, setting to 0");
-        movesWithNumbers = 0;
-    }
-
     if (usingLocalStorage) {
         console.log("Using localStorage mode");
         saveLocalGameCompletion();
@@ -910,11 +897,13 @@ function forceRefreshHistory() {
             0, 0, 300, 300
         );
         
+        // Keep both as data URLs - the original working approach
         const thumbnailDataUrl = thumbnailCanvas.toDataURL('image/jpeg', 0.5);
         const largeImageDataUrl = largeCanvas.toDataURL('image/jpeg', 0.8);
-        console.log("Images created for storage");
         
-        // Save to Firestore with both images
+        console.log("Saving to Firestore with thumbnailDataUrl and largeImageDataUrl");
+        
+        // Save to Firestore with both as data URLs
         firebase.firestore().collection('gameHistory').add({
             userId: currentUser.uid,
             thumbnailDataUrl: thumbnailDataUrl,
@@ -922,22 +911,50 @@ function forceRefreshHistory() {
             showNumbers: showNumbers,
             twoEmptyTiles: useTwoEmptyTiles,
             moves: moveCount,
-            movesWithNumbers: movesWithNumbers, // Add this line
-            autoSolved: autoSolved, // Add this line
+            movesWithNumbers: movesWithNumbers || 0,
+            autoSolved: autoSolved,
             date: firebase.firestore.FieldValue.serverTimestamp()
         })
         .then(() => {
-            console.log("✅ Game completion saved with images");
+            console.log("✅ Game completion saved successfully");
             forceRefreshHistory();
         })
         .catch((error) => {
             console.error("Error saving to Firestore:", error);
             saveGameDataWithoutImage();
         });
+        
     } catch (e) {
         console.error("Error during image creation:", e);
         saveGameDataWithoutImage();
     }
+}
+
+// Add this fallback function for data URL storage
+function saveGameCompletionWithDataUrl(thumbnailDataUrl, largeCanvas, autoSolved) {
+    console.log("⚠️ Falling back to data URL storage for large image");
+    
+    const largeImageDataUrl = largeCanvas.toDataURL('image/jpeg', 0.8);
+    
+    firebase.firestore().collection('gameHistory').add({
+        userId: currentUser.uid,
+        thumbnailDataUrl: thumbnailDataUrl,
+        largeImageDataUrl: largeImageDataUrl, // Use data URL as fallback
+        showNumbers: showNumbers,
+        twoEmptyTiles: useTwoEmptyTiles,
+        moves: moveCount,
+        movesWithNumbers: movesWithNumbers,
+        autoSolved: autoSolved,
+        date: firebase.firestore.FieldValue.serverTimestamp()
+    })
+    .then(() => {
+        console.log("✅ Game completion saved with data URL fallback");
+        forceRefreshHistory();
+    })
+    .catch((error) => {
+        console.error("Error saving to Firestore:", error);
+        saveGameDataWithoutImage();
+    });
 }
 
 // Function to show the image viewer
@@ -951,11 +968,12 @@ function showImageViewer(historyData) {
     console.log("Value:", historyData.movesWithNumbers);
     console.log("Auto solved?", historyData.autoSolved);
     
-
+    
     const viewerModal = document.getElementById('image-viewer-modal');
     const fullSizeImage = document.getElementById('full-size-image');
     const viewerTitle = document.getElementById('image-viewer-title');
     const viewerDetails = document.getElementById('image-viewer-details');
+
     
     if (!viewerModal || !fullSizeImage) {
         console.error("Image viewer elements not found");
@@ -963,7 +981,15 @@ function showImageViewer(historyData) {
     }
     
     // Set the image source
-    fullSizeImage.src = historyData.largeImageDataUrl;
+    // Set the image source - check for both URL types
+    if (historyData.largeImageUrl) {
+        fullSizeImage.src = historyData.largeImageUrl;
+    } else if (historyData.largeImageDataUrl) {
+        fullSizeImage.src = historyData.largeImageDataUrl;
+    } else {
+        console.error("No large image available");
+        return;
+    }
     
     // Set the title and details
     let dateStr = 'Unknown date';
@@ -1317,7 +1343,8 @@ function displayHistoryFromFirebase(historyData, forceRefresh = false) {
                     row.style.cursor = 'pointer';
                     row.classList.add('clickable-row');
                     row.addEventListener('click', function() {
-                        if (data.largeImageDataUrl) {
+                        // Fix: Check for either storage method
+                        if (data.largeImageUrl || data.largeImageDataUrl) {
                             showImageViewer(data);
                         } else {
                             console.log("No large image available for this entry");

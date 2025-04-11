@@ -66,8 +66,10 @@
             <div id="image-viewer-details" style="margin-top: 10px;"></div>
         </div>
     </div>
-   
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-check-compat.js"></script>
+    <div class="option-container">
+        <button id="test-firebase" style="background-color: #ff9900;">Test Firebase Write</button>
+    </div>
+
     <!-- Firebase App (the core Firebase SDK) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <!-- Firebase Auth -->
@@ -76,30 +78,82 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <!-- Firebase Storage -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-check-compat.js"></script>
 
+
+    <!-- <script src="js/firebase-config.js"></script> -->
     <script src="js/firebase-config.js"></script>
     <script>
-      // Initialize Firebase using the imported config
-      const firebaseConfig = {
-            apiKey: "AIzaSyCJYl_O-Rgf-3c0mFmSc2U1EhLt5CQ6ke4",
-            authDomain: "sliding-puzzle-game-48250.firebaseapp.com",
-            projectId: "sliding-puzzle-game-48250",
-            storageBucket: "sliding-puzzle-game-48250.appspot.com",
-            messagingSenderId: "87621162900",
-            appId: "1:87621162900:web:680a2c7ebe6d3ddbeba181"
-        };
-
-      firebase.initializeApp(firebaseConfig);
-      // Use your RECAPTCHA_KEY variable
-      //firebase.appCheck().activate(RECAPTCHA_KEY, true);
-      firebase.appCheck().activate(
-        {
-            provider: new firebase.appCheck.ReCaptchaV3Provider('debug'), // Use 'debug' instead of a real key
-            isTokenAutoRefreshEnabled: true
-        },
-        true
-      );
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        
+        // TEMPORARILY COMMENT OUT APP CHECK to get things working
+        /*
+        try {
+            if (firebase.appCheck) {
+                const appCheck = firebase.appCheck();
+                appCheck.activate(
+                    new firebase.appCheck.ReCaptchaV3Provider('debug'),
+                    true
+                );
+            } else {
+                console.warn("App Check not available - skipping initialization");
+            }
+        } catch (e) {
+            console.error("App Check initialization error:", e);
+            // Continue without App Check
+        }
+        */
+        console.log("Firebase initialized without App Check for testing");
     </script>
-    <script src="js/puzzle.js" defer></script>
+    <script src="js/puzzle.js" ></script>
+    <script>
+        document.getElementById('test-firebase').addEventListener('click', function() {
+            console.log("Testing Firebase write...");
+            
+            // Test if Firebase is initialized
+            if (!firebase.apps || !firebase.apps.length) {
+                console.error("Firebase not initialized!");
+                alert("Firebase not initialized!");
+                return;
+            }
+            
+            // Check authentication
+            const user = firebase.auth().currentUser;
+            console.log("Current user:", user ? user.uid : "No user");
+            
+            if (!user) {
+                console.log("No user signed in, attempting anonymous sign-in...");
+                firebase.auth().signInAnonymously()
+                    .then(result => {
+                        console.log("Sign in successful:", result.user.uid);
+                        testWrite(result.user);
+                    })
+                    .catch(error => {
+                        console.error("Auth error:", error);
+                        alert("Authentication failed: " + error.message);
+                    });
+            } else {
+                testWrite(user);
+            }
+            
+            function testWrite(user) {
+                // Test writing to Firestore with minimal data
+                firebase.firestore().collection('gameHistory').add({
+                    userId: user.uid,
+                    test: true,
+                    date: firebase.firestore.FieldValue.serverTimestamp()
+                })
+                .then(docRef => {
+                    console.log("✅ Test write successful! Document ID:", docRef.id);
+                    alert("Firebase write successful! Check console for details.");
+                })
+                .catch(error => {
+                    console.error("❌ Test write failed:", error);
+                    alert("Firebase write failed: " + error.message);
+                });
+            }
+        });
+        </script>
 </body>
 </html>
