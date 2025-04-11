@@ -68,11 +68,6 @@
     </div>
    
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-check-compat.js"></script>
-    <script>
-      // After initializing Firebase
-      firebase.appCheck().activate('YOUR_RECAPTCHA_KEY', true);
-    </script>
-
     <!-- Firebase App (the core Firebase SDK) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <!-- Firebase Auth -->
@@ -82,24 +77,20 @@
     <!-- Firebase Storage -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 
+    <script src="js/firebase-config.js"></script>
     <script>
-        // Your web app's Firebase configuration
-        const firebaseConfig = {
-          apiKey: "AIzaSyCJYl_O-Rgf-3c0mFmSc2U1EhLt5CQ6ke4",
-          authDomain: "sliding-puzzle-game-48250.firebaseapp.com",
-          projectId: "sliding-puzzle-game-48250",
-          storageBucket: "sliding-puzzle-game-48250.appspot.com",
-          messagingSenderId: "87621162900",
-          appId: "1:87621162900:web:680a2c7ebe6d3ddbeba181"
-        };
-      
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        
-        // Check Firebase status
-        console.log("Firebase SDK loaded, authentication starting...");
-      </script>
-
+      // Initialize Firebase using the imported config
+      firebase.initializeApp(firebaseConfig);
+      // Use your RECAPTCHA_KEY variable
+      //firebase.appCheck().activate(RECAPTCHA_KEY, true);
+      firebase.appCheck().activate(
+        {
+            provider: new firebase.appCheck.ReCaptchaV3Provider('debug'), // Use 'debug' instead of a real key
+            isTokenAutoRefreshEnabled: true
+        },
+        true
+      );
+    </script>
     <script src="js/puzzle.js" defer></script>
 </body>
 </html>
