@@ -231,6 +231,7 @@ function initializeBlankState() {
 function processUploadedImage(img) {
     // Reset move counter
     moveCount = 0;
+    movesWithNumbers = 0; // Add this line
     updateMoveCounter();
     
     const canvas = document.getElementById('puzzleCanvas');
@@ -257,104 +258,15 @@ function processUploadedImage(img) {
     createTilesFromCanvas(canvas);
 }
 
-// Regenerate tiles with current number preference
+// Replace regenerateTilesWithNumberPreference() with this:
 function regenerateTilesWithNumberPreference() {
-    // Redraw the original image and create new tiles
-    if (!originalImage) return;
-    
-    const canvas = document.getElementById('puzzleCanvas');
-    const context = canvas.getContext('2d');
-    
-    // Clear the canvas
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw the original image
-    const size = Math.min(originalImage.width, originalImage.height);
-    const offsetX = (originalImage.width - size) / 2;
-    const offsetY = (originalImage.height - size) / 2;
-    
-    context.drawImage(
-        originalImage, 
-        offsetX, offsetY, size, size, // Source rectangle
-        0, 0, canvas.width, canvas.height // Destination rectangle
-    );
-    
-    // Store current tile layout and empty position
-    const currentTileLayout = {...tiles};
-    const currentEmptyPos = [...emptyPos];
-    console.log("Current empty position:", currentEmptyPos);
-    
-    // Create new tiles with current number preference
-    // But don't reset the game yet
-    tileImages = [];
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = tileSize;
-    tempCanvas.height = tileSize;
-    const tempContext = tempCanvas.getContext('2d');
-    
-    for (let i = 0; i < gridSize; i++) {
-        for (let j = 0; j < gridSize; j++) {
-            const tileIndex = i * gridSize + j;
-            
-            // Skip the last tile (bottom-right) as it will be empty
-            if (tileIndex === gridSize * gridSize - 1) continue;
-            
-            const x = j * tileSize;
-            const y = i * tileSize;
-            
-            // Clear the temporary canvas
-            tempContext.clearRect(0, 0, tileSize, tileSize);
-            
-            // Draw the portion of the image for this tile
-            tempContext.drawImage(canvas, x, y, tileSize, tileSize, 0, 0, tileSize, tileSize);
-            
-            // Add the number on the tile if showNumbers is true
-            if (showNumbers) {
-                const tileNumber = tileIndex + 1; // Numbers 1-15
-                
-                // Add a semi-transparent background for the number
-                tempContext.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                tempContext.fillRect(5, 5, 30, 30);
-                
-                // Add the number
-                tempContext.font = 'bold 20px Arial';
-                tempContext.fillStyle = 'black';
-                tempContext.textAlign = 'center';
-                tempContext.textBaseline = 'middle';
-                tempContext.fillText(tileNumber.toString(), 20, 20);
-            }
-            
-            // Store the tile image
-            tileImages.push(tempCanvas.toDataURL());
-        }
-    }
-    
-    // Now redraw the tiles in their current positions
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Redraw tiles in their current positions
-    tiles = {};
-    for (const [position, tileIdx] of Object.entries(currentTileLayout)) {
-        const [y, x] = position.split(',').map(Number);
-        
-        // Skip drawing at the empty position
-        if (y === currentEmptyPos[0] && x === currentEmptyPos[1]) {
-            continue;
-        }
-        
-        tiles[position] = tileIdx;
-        
-        const img = new Image();
-        img.src = tileImages[tileIdx];
-        img.onload = () => {
-            context.drawImage(img, x * tileSize, y * tileSize);
-        };
-    }
-    
-    // Restore empty position
-    emptyPos = currentEmptyPos;
-    console.log("Empty position restored to:", emptyPos);
+    renderTiles({
+        regenerateImages: true,
+        preserveLayout: true,
+        logDetails: true
+    });
 }
+
 
 // Split image into tiles
 function createTilesFromCanvas(canvas) {
@@ -412,6 +324,7 @@ function createTilesFromCanvas(canvas) {
 function resetGame() {
     // Reset move counter
     moveCount = 0;
+    movesWithNumbers = 0; // Add this line to reset the counter
     updateMoveCounter();
     
     
@@ -516,6 +429,7 @@ function isAdjacent(clickedPos, emptyPosition) {
 
 // Update the moveTile function to check for solution after move
 // Enhanced moveTile function with completion detection
+// Update the moveTile function to better track and log movesWithNumbers
 function moveTile(clickedPos, targetEmptyPos) {
     const tileIdx = tiles[clickedPos];
     delete tiles[clickedPos];
@@ -549,13 +463,16 @@ function moveTile(clickedPos, targetEmptyPos) {
             emptyPos = [parseInt(clickedPos.split(',')[0]), parseInt(clickedPos.split(',')[1])];
         }
         
-        // Increment move counter and update display
-        // Successfully moved a tile
+        // Increment move counter
         moveCount++;
         
-        // Track moves with numbers shown
+        // Track moves with numbers shown - add logging for debugging
+        const numbersBefore = movesWithNumbers;
         if (showNumbers) {
             movesWithNumbers++;
+            console.log(`✅ Numbers shown - incrementing movesWithNumbers: ${numbersBefore} -> ${movesWithNumbers}`);
+        } else {
+            console.log(`ℹ️ Numbers hidden - not incrementing movesWithNumbers: ${movesWithNumbers}`);
         }
         
         // Remember the state for the last move
@@ -569,10 +486,14 @@ function moveTile(clickedPos, targetEmptyPos) {
         console.log("🧩 Checking if puzzle is solved:", solved ? "YES!" : "No");
         
         if (solved) {
+            // Log current state before saving
+            console.log(`🎮 Puzzle solved: Total moves: ${moveCount}, Moves with numbers: ${movesWithNumbers}`);
+            
             // Wait a brief moment for the UI to update before showing completion
             setTimeout(() => {
                 alert(`Congratulations! You solved the puzzle in ${moveCount} moves!`);
                 console.log("🎮 Puzzle solved naturally in", moveCount, "moves");
+                console.log("🔢 With", movesWithNumbers, "moves showing numbers");
                 saveGameCompletion();
             }, 100);
         }
@@ -580,14 +501,21 @@ function moveTile(clickedPos, targetEmptyPos) {
 }
 
 
+
+
 // Function to solve the puzzle
 // Update the solvePuzzle function to save completion
+// Function to solve the puzzle
 function solvePuzzle() {
+    // Save original movesWithNumbers count before resetting
+    const originalMovesWithNumbers = movesWithNumbers;
+    
     // Reset move counter
     moveCount = 0;
     
-    // When auto-solving, track if numbers were shown
-    movesWithNumbers = showNumbers ? 1 : 0; // Set to 1 if numbers were on
+    // Preserve existing movesWithNumbers instead of resetting it
+    // Only add 1 to the count if numbers are shown during auto-solve
+    movesWithNumbers = originalMovesWithNumbers + (showNumbers ? 1 : 0);
     
     updateMoveCounter();
     
@@ -604,6 +532,7 @@ function solvePuzzle() {
     // Show feedback
     alert("Puzzle solved automatically!");
 }
+
 
 // Reset to solved state
 function resetToSolvedState() {
@@ -1198,9 +1127,17 @@ function forceRefreshHistory() {
 
   // Single implementation of saveGameCompletion
   function saveGameCompletion(autoSolved = false) {
-    console.log("🏆 Saving game completion, auto-solved:", autoSolved);
     console.log("🔍 FUNCTION ENTRY: saveGameCompletion called");
     
+    console.log("🏆 Saving game completion, auto-solved:", autoSolved);
+    console.log("🔍 STATS: Moves:", moveCount, "Moves with numbers:", movesWithNumbers);
+    
+    // Ensure movesWithNumbers is valid (prevent potential division by zero)
+    if (moveCount > 0 && (movesWithNumbers === undefined || movesWithNumbers === null)) {
+        console.warn("⚠️ movesWithNumbers was undefined, setting to 0");
+        movesWithNumbers = 0;
+    }
+
     if (usingLocalStorage) {
         console.log("Using localStorage mode");
         saveLocalGameCompletion();
@@ -1310,12 +1247,18 @@ function showImageViewer(historyData) {
     
     // Calculate percentage of moves with numbers if available (for manual solves)
     let numberMovesInfo = '';
-    if (historyData.movesWithNumbers !== undefined) {
-            const percent = Math.round((historyData.movesWithNumbers / historyData.moves) * 100);
-            numberMovesInfo = `
-                <p><strong>Moves with Numbers:</strong> ${historyData.movesWithNumbers} (${percent}% of total)</p>
-            `;
-        }
+    if (!historyData.autoSolved && historyData.movesWithNumbers !== undefined && historyData.moves > 0) {
+        // Only calculate percentage for manually solved puzzles with valid move counts
+        const percent = Math.round((historyData.movesWithNumbers / historyData.moves) * 100);
+        numberMovesInfo = `
+            <p><strong>Moves with Numbers:</strong> ${historyData.movesWithNumbers} (${percent}% of total)</p>
+        `;
+    } else if (historyData.autoSolved && historyData.movesWithNumbers > 0) {
+        // For auto-solved puzzles, just show the count without percentage
+        numberMovesInfo = `
+            <p><strong>Moves with Numbers:</strong> ${historyData.movesWithNumbers}</p>
+        `;
+    }
 
     // Use consistent format with completion method highlighted
     viewerDetails.innerHTML = `
@@ -1328,7 +1271,6 @@ function showImageViewer(historyData) {
         </p>
         ${numberMovesInfo}
     `;
-    }
     
     // Show the modal
     viewerModal.style.display = 'block';
@@ -1387,120 +1329,12 @@ function clearUserHistory() {
         });
 }
 
-// Replace your current redrawTilesWithCurrentSettings function with this:
+// Replace redrawTilesWithCurrentSettings() with this:
 function redrawTilesWithCurrentSettings() {
-    if (!originalImage) {
-        console.log("No image to redraw");
-        return;
-    }
-    
-    console.log("Redrawing tiles with numbers:", showNumbers);
-    
-    // Keep track of original tile positions
-    const originalTileState = {...tiles};
-    
-    // Recreate tile images with/without numbers
-    tileImages = [];
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = tileSize;
-    tempCanvas.height = tileSize;
-    const tempContext = tempCanvas.getContext('2d');
-    
-    // Draw the full image to a temporary canvas
-    const fullCanvas = document.createElement('canvas');
-    fullCanvas.width = tileSize * gridSize;
-    fullCanvas.height = tileSize * gridSize;
-    const fullContext = fullCanvas.getContext('2d');
-    
-    // Calculate scaling to maintain aspect ratio
-    const imageAspect = originalImage.width / originalImage.height;
-    const canvasAspect = fullCanvas.width / fullCanvas.height;
-    
-    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-    if (imageAspect > canvasAspect) {
-        // Image is wider
-        drawHeight = fullCanvas.height;
-        drawWidth = originalImage.width * (fullCanvas.height / originalImage.height);
-        offsetX = (fullCanvas.width - drawWidth) / 2;
-    } else {
-        // Image is taller
-        drawWidth = fullCanvas.width;
-        drawHeight = originalImage.height * (fullCanvas.width / originalImage.width);
-        offsetY = (fullCanvas.height - drawHeight) / 2;
-    }
-    
-    // Draw the original image
-    fullContext.drawImage(originalImage, offsetX, offsetY, drawWidth, drawHeight);
-    
-    // Create tile images from this canvas
-    for (let i = 0; i < gridSize; i++) {
-        for (let j = 0; j < gridSize; j++) {
-            const tileIndex = i * gridSize + j;
-            
-            // Skip the last tile for a standard puzzle
-            if (tileIndex === gridSize * gridSize - 1) continue;
-            
-            // Clear the temporary canvas
-            tempContext.clearRect(0, 0, tileSize, tileSize);
-            
-            // Get the portion of the image for this tile
-            tempContext.drawImage(
-                fullCanvas, 
-                j * tileSize, i * tileSize, 
-                tileSize, tileSize, 
-                0, 0, tileSize, tileSize
-            );
-            
-            // Add number if showNumbers is true
-            if (showNumbers) {
-                const tileNumber = tileIndex + 1;
-                tempContext.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                tempContext.fillRect(5, 5, 20, 20);
-                tempContext.fillStyle = 'black';
-                tempContext.font = 'bold 16px Arial';
-                tempContext.textAlign = 'center';
-                tempContext.textBaseline = 'middle';
-                tempContext.fillText(tileNumber.toString(), 15, 15);
-            }
-            
-            // Store the tile image
-            tileImages.push(tempCanvas.toDataURL());
-        }
-    }
-    
-    // Restore the original game state
-    tiles = originalTileState;
-    
-    // Redraw all tiles in their current positions
-    const canvas = document.getElementById('puzzleCanvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Clear the canvas first
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw each tile at its current position
-    for (const [position, tileIdx] of Object.entries(tiles)) {
-        // Skip the second empty position if present
-        if (position === 'secondEmptyPos') continue;
-        
-        const [row, col] = position.split(',').map(Number);
-        
-        // Skip empty positions
-        if (row === emptyPos[0] && col === emptyPos[1]) continue;
-        if (useTwoEmptyTiles && 
-            tiles.secondEmptyPos && 
-            row === tiles.secondEmptyPos[0] && 
-            col === tiles.secondEmptyPos[1]) continue;
-        
-        // Draw the tile at the correct position
-        const img = new Image();
-        img.src = tileImages[tileIdx];
-        img.onload = () => {
-            ctx.drawImage(img, col * tileSize, row * tileSize);
-        };
-    }
-    
-    console.log("Tiles redrawn successfully with current positions preserved");
+    renderTiles({
+        regenerateImages: true,
+        preserveLayout: true
+    });
 }
 
 
@@ -1519,15 +1353,143 @@ function updateMoveCounter() {
 
 // Add this function after updateMoveCounter
 
-// Function to redraw all tiles in their current positions
+// Replace drawTiles() with this:
 function drawTiles() {
-    if (!tileImages.length) return;
+    renderTiles({
+        regenerateImages: false,
+        preserveLayout: true
+    });
+}
+
+
+/**
+ * Unified function to handle tile drawing with different options
+ * @param {Object} options Configuration options
+ * @param {boolean} options.regenerateImages Whether to regenerate tile images (default: false)
+ * @param {boolean} options.preserveLayout Whether to preserve current tile layout (default: true)
+ * @param {boolean} options.logDetails Whether to log detailed information (default: false)
+ */
+function renderTiles(options = {}) {
+    // Default options
+    const config = {
+        regenerateImages: false,
+        preserveLayout: true,
+        logDetails: false,
+        ...options
+    };
+    
+    if (config.logDetails) {
+        console.log(`🧩 Rendering tiles with options:`, config);
+    }
+    
+    // Exit early if no image or tiles
+    if (!originalImage && config.regenerateImages) {
+        console.log("No image to render");
+        return;
+    }
+    
+    if (!tileImages.length && !config.regenerateImages) {
+        console.log("No tile images to draw");
+        return;
+    }
     
     const canvas = document.getElementById('puzzleCanvas');
     const ctx = canvas.getContext('2d');
     
-    // Clear the canvas first
+    // Keep track of original tile positions if preserving layout
+    const originalTileState = config.preserveLayout ? {...tiles} : {};
+    const originalEmptyPos = config.preserveLayout ? [...emptyPos] : null;
+    const originalSecondEmptyPos = config.preserveLayout && useTwoEmptyTiles && tiles.secondEmptyPos 
+        ? [...tiles.secondEmptyPos] : null;
+    
+    // Clear the canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Regenerate tile images if needed
+    if (config.regenerateImages) {
+        tileImages = [];
+        
+        // Draw the full image to a temporary canvas
+        const fullCanvas = document.createElement('canvas');
+        fullCanvas.width = tileSize * gridSize;
+        fullCanvas.height = tileSize * gridSize;
+        const fullContext = fullCanvas.getContext('2d');
+        
+        // Calculate scaling to maintain aspect ratio
+        const imageAspect = originalImage.width / originalImage.height;
+        const canvasAspect = fullCanvas.width / fullCanvas.height;
+        
+        let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+        if (imageAspect > canvasAspect) {
+            // Image is wider
+            drawHeight = fullCanvas.height;
+            drawWidth = originalImage.width * (fullCanvas.height / originalImage.height);
+            offsetX = (fullCanvas.width - drawWidth) / 2;
+        } else {
+            // Image is taller
+            drawWidth = fullCanvas.width;
+            drawHeight = originalImage.height * (fullCanvas.width / originalImage.width);
+            offsetY = (fullCanvas.height - drawHeight) / 2;
+        }
+        
+        // Draw the original image
+        fullContext.drawImage(originalImage, offsetX, offsetY, drawWidth, drawHeight);
+        
+        // Create a temporary canvas for individual tiles
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = tileSize;
+        tempCanvas.height = tileSize;
+        const tempContext = tempCanvas.getContext('2d');
+        
+        // Create tile images from the full canvas
+        for (let i = 0; i < gridSize; i++) {
+            for (let j = 0; j < gridSize; j++) {
+                const tileIndex = i * gridSize + j;
+                
+                // Skip the last tile for a standard puzzle
+                if (tileIndex === gridSize * gridSize - 1) continue;
+                
+                // Clear the temporary canvas
+                tempContext.clearRect(0, 0, tileSize, tileSize);
+                
+                // Draw the portion of the image for this tile
+                tempContext.drawImage(
+                    fullCanvas, 
+                    j * tileSize, i * tileSize, 
+                    tileSize, tileSize, 
+                    0, 0, tileSize, tileSize
+                );
+                
+                // Add number if showNumbers is true
+                if (showNumbers) {
+                    const tileNumber = tileIndex + 1;
+                    tempContext.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    tempContext.fillRect(5, 5, 30, 30);
+                    tempContext.fillStyle = 'black';
+                    tempContext.font = 'bold 16px Arial';
+                    tempContext.textAlign = 'center';
+                    tempContext.textBaseline = 'middle';
+                    tempContext.fillText(tileNumber.toString(), 15, 15);
+                }
+                
+                // Store the tile image
+                tileImages.push(tempCanvas.toDataURL());
+            }
+        }
+        
+        if (config.logDetails) {
+            console.log(`🧩 Generated ${tileImages.length} tile images`);
+        }
+    }
+    
+    // Restore the original game state if needed
+    if (config.preserveLayout) {
+        tiles = originalTileState;
+        emptyPos = originalEmptyPos;
+        if (originalSecondEmptyPos) {
+            tiles.secondEmptyPos = originalSecondEmptyPos;
+        }
+    }
     
     // Draw each tile at its current position
     for (const [position, tileIdx] of Object.entries(tiles)) {
@@ -1546,12 +1508,12 @@ function drawTiles() {
         // Draw the tile at the correct position
         const img = new Image();
         img.src = tileImages[tileIdx];
-        
-        // Use onload to ensure the image is drawn
         img.onload = () => {
             ctx.drawImage(img, col * tileSize, row * tileSize);
         };
     }
     
-    console.log("Tiles redrawn");
+    if (config.logDetails) {
+        console.log(`✅ Tiles rendered successfully`);
+    }
 }
